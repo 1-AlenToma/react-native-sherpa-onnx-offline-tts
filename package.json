@@ -17,6 +17,22 @@
       }
     }
   },
+  "codegenConfig": {
+    "name": "react-native-sherpa-onnx-offline-tts",
+    "jsSrcsDir": "src",
+    "type": "module",
+    "components": [],
+    "modules": [
+      {
+        "name": "TTSManager",
+        "type": "NativeModule",
+        "platforms": [
+          "android",
+          "ios"
+        ]
+      }
+    ]
+  },
   "files": [
     "src",
     "lib",
