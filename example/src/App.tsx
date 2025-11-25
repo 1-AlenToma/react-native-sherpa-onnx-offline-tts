@@ -10,7 +10,7 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import TTSManager from 'react-native-sherpa-onnx-offline-tts'; // Import your native module
+import TTSManager from 'react_native_sherpa_onnx_offline_tts'; // Import your native module
 import RNFS from 'react-native-fs'; // For file system operations
 import { unzip } from 'react-native-zip-archive'; // For unzipping archives
 

@@ -1,5 +1,5 @@
 {
-  "name": "react-native-sherpa-onnx-offline-tts",
+  "name": "react_native_sherpa_onnx_offline_tts",
   "version": "0.2.4",
   "description": "This module is wrapper over sherpa onnx for tts",
   "source": "./src/index.tsx",
@@ -18,7 +18,7 @@
     }
   },
   "codegenConfig": {
-    "name": "react-native-sherpa-onnx-offline-tts",
+    "name": "react_native_sherpa_onnx_offline_tts",
     "jsSrcsDir": "src",
     "type": "module",
     "components": [],

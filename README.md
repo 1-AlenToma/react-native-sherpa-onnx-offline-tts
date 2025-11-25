@@ -1,4 +1,4 @@
-# react-native-sherpa-onnx-offline-tts
+# react_native_sherpa_onnx_offline_tts
 
 A lightweight React Native wrapper around [Sherpa‑ONNX](https://github.com/k2-fsa/sherpa-onnx) that lets you run **100 % offline Text‑to‑Speech** on iOS and Android.
 
@@ -17,9 +17,9 @@ A lightweight React Native wrapper around [Sherpa‑ONNX](https://github.com/k2
 
 ```bash
 # Add the library
-npm install react-native-sherpa-onnx-offline-tts
+npm install react_native_sherpa_onnx_offline_tts
 # or
-yarn add react-native-sherpa-onnx-offline-tts
+yarn add react_native_sherpa_onnx_offline_tts
 
 # iOS only\	npx pod-install
 ```
@@ -36,7 +36,7 @@ yarn add react-native-sherpa-onnx-offline-tts
 4. **Initialize**, then generate or stream speech.
 
 ```tsx
-import TTSManager from 'react-native-sherpa-onnx-offline-tts';
+import TTSManager from 'react_native_sherpa_onnx_offline_tts';
 import RNFS from 'react-native-fs';
 import { unzip } from 'react-native-zip-archive';
 

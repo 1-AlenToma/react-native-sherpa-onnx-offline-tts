@@ -12,7 +12,8 @@ const initialize = (modelId: string) => {
 const generateAndPlay = async (text: any, sid: any, speed: any) => {
   try {
     const result = await TTSManager.generateAndPlay(text, sid, speed);
-    console.log(result);
+    if (__DEV__)
+      console.log(result);
   } catch (error) {
     console.error(error);
   }

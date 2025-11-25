@@ -2,7 +2,7 @@
   "compilerOptions": {
     "rootDir": ".",
     "paths": {
-      "react-native-sherpa-onnx-offline-tts": ["./src/index"]
+      "react_native_sherpa_onnx_offline_tts": ["./src/index"]
     },
     "allowUnreachableCode": false,
     "allowUnusedLabels": false,
