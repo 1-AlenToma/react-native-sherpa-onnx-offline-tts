@@ -88,7 +88,7 @@ class TTSManagerModule(private val reactContext: ReactApplicationContext) : Reac
 
     // Initialize TTS and Audio Player
     @ReactMethod
-    fun initializeTTS(sampleRate: Double, channels: Int, modelId: String) {
+    fun initializeTTS(sampleRate: Double, channels: Int, modelId: String, debug: Boolean, threadsUsed:Int) {
         // Setup Audio Player
         realTimeAudioPlayer = AudioPlayer(sampleRate.toInt(), channels, object : AudioPlayerDelegate {
             override fun didUpdateVolume(volume: Float) {
@@ -118,8 +118,8 @@ class TTSManagerModule(private val reactContext: ReactApplicationContext) : Reac
                 tokens=tokensPath,
                 dataDir=dataDirPath,
               ),
-              numThreads=1,
-              debug=true,
+              numThreads=threadsUsed,
+              debug=debug,
             )
           )
 

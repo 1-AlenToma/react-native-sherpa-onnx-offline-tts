@@ -1,5 +1,5 @@
 declare const _default: {
-    initialize: (modelId: string) => void;
+    initialize: (modelId: string, debug?: boolean, threadsUsed?: number) => void;
     generateAndPlay: (text: any, sid: any, speed: any) => Promise<void>;
     deinitialize: () => void;
     addVolumeListener: (callback: any) => import("react-native").EmitterSubscription;
