@@ -12,7 +12,7 @@ Pod::Spec.new do |s|
   s.authors      = package["author"]
 
   s.platforms    = { :ios => '16.0' }
-  s.source       = { :git => "https://github.com/kislay99/react-native-sherpa-onnx-offline-tts.git", :tag => "#{s.version}" }
+  s.source       = { :git => "https://github.com/kislay99/react_native_sherpa_onnx_offline_tts.git", :tag => "#{s.version}" }
 
   s.source_files = "ios/**/*.{h,m,mm,swift}"
   s.resources = ['ios/Resources/**/*']
