@@ -27,11 +27,11 @@
         "name": "TTSManager",
         "type": "NativeModule",
         "platforms": [
-          "android",
-          "ios"
+          "android"
         ]
       }
-    ]
+    ],
+    "excludedPlatforms": ["ios"]
   },
   "files": [
     "src",
