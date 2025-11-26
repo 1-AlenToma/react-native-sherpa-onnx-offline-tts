@@ -139,12 +139,16 @@ class AudioPlayer(
     private fun maybeSendCompletion() {
         if (!sentCompletion && audioQueue.isEmpty() && accumulationBuffer.isEmpty()) {
             sentCompletion = true
-            mainHandler.post {
-             delegate?.didUpdateVolume(-1f) 
-             delegate?.didFinishPlaying() 
-            }
-            
+            mainHandler.post { delegate?.didFinishPlaying("PlaybackFinished") }
         }
+    }
+
+    fun clearQueue() {
+        sentCompletion = true
+        audioQueue.clear()
+        audioTrack?.stop()
+        audioTrack?.flush()  
+        audioTrack?.play()
     }
 
     fun stopPlayer() {
@@ -163,6 +167,6 @@ class AudioPlayer(
             volumesQueue.clear()
         }
 
-        mainHandler.post { delegate?.didUpdateVolume(-1f) } // ← now sends -1
+        mainHandler.post { delegate?.didFinishPlaying("Stopped") }
     }
 }
