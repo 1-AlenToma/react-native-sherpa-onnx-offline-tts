@@ -139,7 +139,11 @@ class AudioPlayer(
     private fun maybeSendCompletion() {
         if (!sentCompletion && audioQueue.isEmpty() && accumulationBuffer.isEmpty()) {
             sentCompletion = true
-            mainHandler.post { delegate?.didUpdateVolume(-1f) }
+            mainHandler.post {
+             delegate?.didUpdateVolume(-1f) 
+             delegate?.didFinishPlaying() 
+            }
+            
         }
     }
 

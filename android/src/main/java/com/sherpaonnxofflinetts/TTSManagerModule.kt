@@ -3,68 +3,38 @@ package com.sherpaonnxofflinetts
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import com.k2fsa.sherpa.onnx.*
-import android.content.res.AssetManager
-import kotlin.concurrent.thread
 import android.content.Context
+import kotlin.concurrent.thread
+import android.os.Handler
+import android.os.Looper
+import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
-import org.json.JSONObject
 
 class ModelLoader(private val context: Context) {
 
-    /**
-     * Copies a file from the assets directory to the internal storage.
-     *
-     * @param assetPath The path to the asset in the assets directory.
-     * @param outputFileName The name of the file in internal storage.
-     * @return The absolute path to the copied file.
-     * @throws IOException If an error occurs during file operations.
-     */
     @Throws(IOException::class)
     fun loadModelFromAssets(assetPath: String, outputFileName: String): String {
-        // Open the asset as an InputStream
         val assetManager = context.assets
         val inputStream = assetManager.open(assetPath)
-
-        // Create a file in the app's internal storage
         val outFile = File(context.filesDir, outputFileName)
-        FileOutputStream(outFile).use { output ->
-            inputStream.copyTo(output)
-        }
-
-        // Close the InputStream
+        FileOutputStream(outFile).use { output -> inputStream.copyTo(output) }
         inputStream.close()
-
-        // Return the absolute path to the copied file
         return outFile.absolutePath
     }
 
-    /**
-     * Copies an entire directory from the assets to internal storage.
-     *
-     * @param assetDir The directory path in the assets.
-     * @param outputDir The directory path in internal storage.
-     * @throws IOException If an error occurs during file operations.
-     */
     @Throws(IOException::class)
     fun copyAssetDirectory(assetDir: String, outputDir: File) {
         val assetManager = context.assets
         val files = assetManager.list(assetDir) ?: return
-
-        if (!outputDir.exists()) {
-            outputDir.mkdirs()
-        }
-
+        if (!outputDir.exists()) outputDir.mkdirs()
         for (file in files) {
             val assetPath = if (assetDir.isEmpty()) file else "$assetDir/$file"
             val outFile = File(outputDir, file)
-
             if (assetManager.list(assetPath)?.isNotEmpty() == true) {
-                // It's a directory
                 copyAssetDirectory(assetPath, outFile)
             } else {
-                // It's a file
                 assetManager.open(assetPath).use { inputStream ->
                     FileOutputStream(outFile).use { outputStream ->
                         inputStream.copyTo(outputStream)
@@ -75,84 +45,111 @@ class ModelLoader(private val context: Context) {
     }
 }
 
-
 class TTSManagerModule(private val reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext) {
 
     private var tts: OfflineTts? = null
     private var realTimeAudioPlayer: AudioPlayer? = null
     private val modelLoader = ModelLoader(reactContext)
 
-    override fun getName(): String {
-        return "TTSManager"
-    }
+    private var isStopped = false
+    private var currentPromise: Promise? = null
+    private var currentOnDone: (() -> Unit)? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
 
-    // Initialize TTS and Audio Player
+    override fun getName(): String = "TTSManager"
+
+    // Initialize TTS
     @ReactMethod
     fun initializeTTS(sampleRate: Double, channels: Int, modelId: String, debug: Boolean, threadsUsed:Int) {
-        // Setup Audio Player
         realTimeAudioPlayer = AudioPlayer(sampleRate.toInt(), channels, object : AudioPlayerDelegate {
-            override fun didUpdateVolume(volume: Float) {
-                sendVolumeUpdate(volume)
-            }
+            override fun didUpdateVolume(volume: Float) { sendVolumeUpdate(volume) }
+            override fun didFinishPlaying() { handlePlaybackFinished() }
         })
-
-        // Determine model paths based on modelId
-        
-        // val modelDirAssetPath = "models"
-        // val modelDirInternal = reactContext.filesDir
-        // modelLoader.copyAssetDirectory(modelDirAssetPath, modelDirInternal)
-        // val modelPath = File(modelDirInternal, if (modelId.lowercase() == "male") "en_US-ryan-medium.onnx" else "en_US-hfc_female-medium.onnx").absolutePath
-        // val tokensPath = File(modelDirInternal, "tokens.txt").absolutePath
-        // val dataDirPath = File(modelDirInternal, "espeak-ng-data").absolutePath // Directory copy handled above
 
         val jsonObject = JSONObject(modelId)
         val modelPath = jsonObject.getString("modelPath")
         val tokensPath = jsonObject.getString("tokensPath")
         val dataDirPath = jsonObject.getString("dataDirPath")
 
-        // Build OfflineTtsConfig using the helper function
         val config = OfflineTtsConfig(
-            model=OfflineTtsModelConfig(
-              vits=OfflineTtsVitsModelConfig(
-                model=modelPath,
-                tokens=tokensPath,
-                dataDir=dataDirPath,
-              ),
-              numThreads=threadsUsed,
-              debug=debug,
+            model = OfflineTtsModelConfig(
+                vits = OfflineTtsVitsModelConfig(
+                    model = modelPath,
+                    tokens = tokensPath,
+                    dataDir = dataDirPath
+                ),
+                numThreads = threadsUsed,
+                debug = debug
             )
-          )
+        )
 
-        // Initialize sherpa-onnx offline TTS
-        tts = OfflineTts(config=config)
-
-        // Start the audio player
+        tts = OfflineTts(config = config)
         realTimeAudioPlayer?.start()
     }
 
-    // Generate and Play method exposed to React Native
-    @ReactMethod
-    fun generateAndPlay(text: String, sid: Int, speed: Double, promise: Promise) {
-        val trimmedText = text.trim()
-        if (trimmedText.isEmpty()) {
-            promise.reject("EMPTY_TEXT", "Input text is empty")
-            return
-        }
-
-        val sentences = splitText(trimmedText, 15)
-            try {
-                for (sentence in sentences) {
-                    val processedSentence = if (sentence.endsWith(".")) sentence else "$sentence."
-                    generateAudio(processedSentence, sid, speed.toFloat())
-                }
-                // Once done generating and enqueueing all audio, resolve the promise
-                promise.resolve("Audio generated and played successfully")
-            } catch (e: Exception) {
-                promise.reject("GENERATION_ERROR", "Error during audio generation: ${e.message}")
-            }
+    // Generate and play text
+@ReactMethod
+fun generateAndPlay(text: String, sid: Int, speed: Double, promise: Promise) {
+    val trimmedText = text.trim()
+    if (trimmedText.isEmpty()) {
+        promise.reject("EMPTY_TEXT", "Input text is empty")
+        return
     }
 
-    // Deinitialize method exposed to React Native
+    // If a previous utterance is running, notify it as "overwritten"
+    currentOnDone?.invoke("overwritten")
+    currentPromise?.resolve("overwritten")  // or reject if you prefer
+
+    // Stop previous playback
+    isStopped = true
+    realTimeAudioPlayer?.stopPlayer()
+
+    // Reset state
+    isStopped = false
+    currentPromise = promise
+
+    // Register new onDone
+    currentOnDone = { result: String? ->
+        if (result == null) {
+            promise.resolve("PlaybackFinished")
+        } else {
+            promise.resolve(result) // e.g., "overwritten"
+        }
+        currentPromise = null
+        sendEvent("TTS_FINISHED")
+    }
+
+    val sentences = splitText(trimmedText, 15)
+
+    thread {
+        try {
+            for (sentence in sentences) {
+                if (isStopped) return@thread
+                val processedSentence = if (sentence.endsWith(".")) sentence else "$sentence."
+                generateAudio(processedSentence, sid, speed.toFloat())
+            }
+
+            // If no audio queued, call onDone immediately
+            if (sentences.isEmpty()) {
+                mainHandler.post { currentOnDone?.invoke(null) }
+            }
+        } catch (e: Exception) {
+            promise.reject("GENERATION_ERROR", e.message)
+        }
+    }
+}
+
+
+    // Stop playback
+    @ReactMethod
+    fun stop() {
+        isStopped = true
+        currentOnDone = null
+        currentPromise = null
+        realTimeAudioPlayer?.stopPlayer()
+    }
+
+    // Deinitialize TTS
     @ReactMethod
     fun deinitialize() {
         realTimeAudioPlayer?.stopPlayer()
@@ -161,7 +158,7 @@ class TTSManagerModule(private val reactContext: ReactApplicationContext) : Reac
         tts = null
     }
 
-    // Helper: split text into manageable chunks similar to iOS logic
+    // Split text into chunks
     private fun splitText(text: String, maxWords: Int): List<String> {
         val sentences = mutableListOf<String>()
         val words = text.split("\\s+".toRegex()).filter { it.isNotEmpty() }
@@ -171,7 +168,6 @@ class TTSManagerModule(private val reactContext: ReactApplicationContext) : Reac
         while (currentIndex < totalWords) {
             val endIndex = (currentIndex + maxWords).coerceAtMost(totalWords)
             var chunk = words.subList(currentIndex, endIndex).joinToString(" ")
-
             val lastPeriod = chunk.lastIndexOf('.')
             val lastComma = chunk.lastIndexOf(',')
 
@@ -196,30 +192,34 @@ class TTSManagerModule(private val reactContext: ReactApplicationContext) : Reac
         return sentences
     }
 
+    // Generate audio chunk
     private fun generateAudio(text: String, sid: Int, speed: Float) {
-        val startTime = System.currentTimeMillis()
-        val audio = tts?.generate(text, sid, speed)
-        val endTime = System.currentTimeMillis()
-        val generationTime = (endTime - startTime) / 1000.0
-        println("Time taken for TTS generation: $generationTime seconds")
-
-        if (audio == null) {
-            println("Error: TTS was never initialized or audio generation failed")
-            return
-        }
+        val audio = tts?.generate(text, sid, speed) ?: return
         realTimeAudioPlayer?.enqueueAudioData(audio.samples, audio.sampleRate)
     }
 
+    // Called by AudioPlayer when playback finishes
+    private fun handlePlaybackFinished() {
+        if (isStopped) return
+        currentOnDone?.invoke()
+        currentOnDone = null
+    }
+
+    // Volume update
     private fun sendVolumeUpdate(volume: Float) {
-        // Emit the volume to JavaScript
-        if (reactContext.hasActiveCatalystInstance()) {
-            val params = Arguments.createMap()
-            
-            params.putDouble("volume", volume.toDouble())
-            println("kislaytest: Volume Update: $volume")
-            reactContext
-                .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
-                .emit("VolumeUpdate", params)
-        }
+        if (!reactContext.hasActiveCatalystInstance()) return
+        val params = Arguments.createMap()
+        params.putDouble("volume", volume.toDouble())
+        reactContext
+            .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+            .emit("VolumeUpdate", params)
+    }
+
+    // Send general events
+    private fun sendEvent(eventName: String) {
+        if (!reactContext.hasActiveCatalystInstance()) return
+        reactContext
+            .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+            .emit(eventName, null)
     }
 }
