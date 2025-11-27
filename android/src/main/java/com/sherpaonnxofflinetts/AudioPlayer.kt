@@ -17,7 +17,9 @@ class AudioPlayer(
     private var audioTrack: AudioTrack? = null
     private val audioQueue = LinkedBlockingQueue<FloatArray>()
     @Volatile private var isRunning = false
-    @Volatile private var sentCompletion = false          // ← NEW
+    @Volatile private var sentCompletion = false
+    @Volatile private var inputCompleted = false
+    @Volatile private var totalFramesWritten = 0
 
     private var playbackThread: Thread? = null
 
@@ -34,19 +36,27 @@ class AudioPlayer(
     private val volumeUpdateRunnable = object : Runnable {
         override fun run() {
             if (!isRunning) return
+            volumesQueue.poll() // Optional: send to JS here if needed
+            if (isRunning) mainHandler.postDelayed(this, volumeUpdateIntervalMs)
+        }
+    }
 
-            val volume = volumesQueue.poll()
-            if (volume != null) {
-                delegate?.didUpdateVolume(volume)
-            } else if (!sentCompletion) {                 // don't spam 0 after -1
-                delegate?.didUpdateVolume(0f)
-            }
+    private fun startCompletionChecker() {
+    val checker = object : Runnable {
+        override fun run() {
+            if (!isRunning) return
 
-            if (isRunning) {
-                mainHandler.postDelayed(this, volumeUpdateIntervalMs)
+            checkCompletion()  // check if finished
+
+            // If still waiting for input completion, schedule next check
+            if (inputCompleted) {
+                mainHandler.postDelayed(this, 100) // repeat after 10ms
             }
         }
     }
+
+    mainHandler.post(checker) // start the loop
+}
 
     fun start() {
         val channelConfig = if (channels == 1)
@@ -54,53 +64,40 @@ class AudioPlayer(
         else
             AudioFormat.CHANNEL_OUT_STEREO
 
-        val desiredBufferDurationMs = 20
-        val bufferSizeInSamples = (sampleRate * desiredBufferDurationMs) / 1000
+        val bufferSizeInSamples = (sampleRate * 20) / 1000
         val bufferSizeInBytes = bufferSizeInSamples * 4 * channels
-        val minBufferSizeInBytes = AudioTrack.getMinBufferSize(
-            sampleRate, channelConfig, AudioFormat.ENCODING_PCM_FLOAT
-        )
-
-        if (minBufferSizeInBytes == AudioTrack.ERROR || minBufferSizeInBytes == AudioTrack.ERROR_BAD_VALUE) {
-            throw IllegalStateException("Invalid buffer size")
-        }
-
-        val finalBufferSizeInBytes = maxOf(bufferSizeInBytes, minBufferSizeInBytes)
+        val minBufferSize = AudioTrack.getMinBufferSize(sampleRate, channelConfig, AudioFormat.ENCODING_PCM_FLOAT)
+        val finalBufferSize = maxOf(bufferSizeInBytes, minBufferSize)
 
         audioTrack = AudioTrack.Builder()
-            .setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC) // ← CHANGED
-                    .build()
-            )
-            .setAudioFormat(
-                AudioFormat.Builder()
-                    .setSampleRate(sampleRate)
-                    .setChannelMask(channelConfig)
-                    .setEncoding(AudioFormat.ENCODING_PCM_FLOAT)
-                    .build()
-            )
+            .setAudioAttributes(AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_MEDIA)
+                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                .build())
+            .setAudioFormat(AudioFormat.Builder()
+                .setSampleRate(sampleRate)
+                .setChannelMask(channelConfig)
+                .setEncoding(AudioFormat.ENCODING_PCM_FLOAT)
+                .build())
             .setTransferMode(AudioTrack.MODE_STREAM)
-            .setBufferSizeInBytes(finalBufferSizeInBytes)
+            .setBufferSizeInBytes(finalBufferSize)
             .build()
 
         audioTrack?.play()
         isRunning = true
-
         mainHandler.post(volumeUpdateRunnable)
 
         playbackThread = Thread {
-            Log.d("kislaytest", "Playback thread started.")
+            Log.d("AudioPlayer", "Playback thread started.")
             while (isRunning) {
                 try {
                     val samples = audioQueue.take()
                     synchronized(this) {
                         accumulationBuffer.addAll(samples.asList())
                         processAccumulatedSamples()
+                        totalFramesWritten += samples.size / channels
                     }
                     audioTrack?.write(samples, 0, samples.size, AudioTrack.WRITE_BLOCKING)
-                    maybeSendCompletion()                   // ← NEW
                 } catch (e: InterruptedException) {
                     break
                 }
@@ -111,62 +108,72 @@ class AudioPlayer(
 
     private fun processAccumulatedSamples() {
         while (accumulationBuffer.size >= samplesPerChunk) {
-            val chunkSamples = accumulationBuffer.subList(0, samplesPerChunk).toFloatArray()
+            val chunk = accumulationBuffer.subList(0, samplesPerChunk).toFloatArray()
             accumulationBuffer.subList(0, samplesPerChunk).clear()
-
-            val rawPeak = computePeak(chunkSamples)
-            val volume = rawPeak * scalingFactor
+            val volume = computePeak(chunk) * scalingFactor
             volumesQueue.offer(volume)
         }
     }
 
     fun enqueueAudioData(samples: FloatArray, sr: Int) {
         if (sr != sampleRate) throw IllegalArgumentException("Sample rate mismatch")
-        sentCompletion = false                              // ← reset
+        synchronized(this) { sentCompletion = false }
         audioQueue.offer(samples)
+    }
+
+    fun markInputComplete() {
+        synchronized(this) {
+            inputCompleted = true
+        }
+        checkCompletion()
+        startCompletionChecker();
     }
 
     private fun computePeak(data: FloatArray): Float {
         var maxVal = 0f
-        for (sample in data) {
-            val absVal = abs(sample)
-            if (absVal > maxVal) maxVal = absVal
-        }
+        for (sample in data) maxVal = maxOf(maxVal, abs(sample))
         return maxVal
     }
 
-    // Completion helper
-    private fun maybeSendCompletion() {
-        if (!sentCompletion && audioQueue.isEmpty() && accumulationBuffer.isEmpty()) {
-            sentCompletion = true
-            mainHandler.post { delegate?.didFinishPlaying("PlaybackFinished") }
+    private fun checkCompletion() {
+        synchronized(this) {
+            if (!sentCompletion && inputCompleted && audioQueue.isEmpty() && audioTrack?.playbackHeadPosition ?: 0 >= totalFramesWritten) {
+                sentCompletion = true
+                inputCompleted = false
+                mainHandler.post { delegate?.didFinishPlaying("PlaybackFinished") }
+            }
         }
     }
 
     fun clearQueue() {
-        sentCompletion = true
         audioQueue.clear()
-        audioTrack?.stop()
-        audioTrack?.flush()  
-        audioTrack?.play()
-    }
-
-    fun stopPlayer() {
-        isRunning = false
-        playbackThread?.interrupt()
-        playbackThread?.join()
-
-        mainHandler.removeCallbacks(volumeUpdateRunnable)
-
-        audioTrack?.stop()
-        audioTrack?.release()
-        audioTrack = null
-
         synchronized(this) {
             accumulationBuffer.clear()
             volumesQueue.clear()
+            sentCompletion = true
+            inputCompleted = false
+            totalFramesWritten=0
         }
+        audioTrack?.stop()
+        audioTrack?.flush()
+        audioTrack?.play()
+        mainHandler.post { delegate?.didFinishPlaying("Stopped") }
+    }
 
+    fun stopPlayer() {
+        
+        playbackThread?.interrupt()
+        playbackThread?.join()
+        mainHandler.removeCallbacks(volumeUpdateRunnable)
+        audioTrack?.stop()
+        audioTrack?.release()
+        audioTrack = null
+        synchronized(this) {
+            accumulationBuffer.clear()
+            volumesQueue.clear()
+            totalFramesWritten=0
+            isRunning = false
+        }
         mainHandler.post { delegate?.didFinishPlaying("Stopped") }
     }
 }

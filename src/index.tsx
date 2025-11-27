@@ -17,11 +17,11 @@ const stop = async () => {
   await TTSManager.stop();
 }
 
-const generateAndPlay = async (item: { text: string, sid?: number, speed?: number, onDone?: typeof onDone }) => {
+const generateAndPlay = async (item: { text: string, nextText?: string, sid?: number, speed?: number, onDone?: typeof onDone }) => {
   try {
     if (item.onDone)
       onDone = item.onDone;
-    const result = await TTSManager.generateAndPlay(item.text, item.sid ?? 0, item.speed ?? 1);
+    const result = await TTSManager.generateAndPlay(item.text, item.nextText ?? "", item.sid ?? 0, item.speed ?? 1);
 
     if (__DEV__)
       console.log(result);
