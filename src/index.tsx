@@ -8,10 +8,10 @@ const ttsManagerEmitter = new NativeEventEmitter(TTSManager);
 type MGS = "PlaybackFinished" | "overwritten" | "Stopped" | "Error";
 
 let onDone: ((msg?: MGS) => void) = () => { };
-
-const initialize = async (modelId: string, debug: boolean = false, threadsUsed: number = 1) => {
+//sampleRate could be found in modol_card
+const initialize = async (modelId: string, sampleRate: number = 22050, debug: boolean = false, threadsUsed: number = 1) => {
   try {
-    return await TTSManager.initializeTTS(22050, 1, modelId, debug, threadsUsed) as boolean;
+    return await TTSManager.initializeTTS(sampleRate, 1, modelId, debug, threadsUsed) as boolean;
   } catch (e) {
     console.error(e);
     return false;
