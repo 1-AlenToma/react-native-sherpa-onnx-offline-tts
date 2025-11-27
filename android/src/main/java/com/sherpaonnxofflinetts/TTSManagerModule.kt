@@ -101,7 +101,8 @@ class TTSManagerModule(private val reactContext: ReactApplicationContext) : Reac
 
     // Initialize TTS and Audio Player
     @ReactMethod
-    fun initializeTTS(sampleRate: Double, channels: Int, modelId: String, debug: Boolean, threadsUsed: Int) {
+    fun initializeTTS(sampleRate: Double, channels: Int, modelId: String, debug: Boolean, threadsUsed: Int, promise: Promise) {
+        try{
         // Setup Audio Player
         realTimeAudioPlayer = AudioPlayer(sampleRate.toInt(), channels, object : AudioPlayerDelegate {
             override fun didFinishPlaying(msg: String) {
@@ -141,6 +142,10 @@ class TTSManagerModule(private val reactContext: ReactApplicationContext) : Reac
 
         // Start the audio player
         realTimeAudioPlayer?.start()
+        promise.resolve(true)
+        } catch (e: Exception) {
+             promise.reject("GENERATION_ERROR", "initializeTTSError: ${e.message}")
+        }
     }
 
     @ReactMethod
@@ -204,11 +209,16 @@ fun generateAndPlay(text: String, nextText: String, sid: Int, speed: Double, pro
 
     // Deinitialize method exposed to React Native
     @ReactMethod
-    fun deinitialize() {
+    fun deinitialize(promise: Promise) {
+        try{
         realTimeAudioPlayer?.stopPlayer()
         realTimeAudioPlayer = null
         tts?.release()
         tts = null
+        promise.resolve(true)
+        } catch (e: Exception) {
+             promise.reject("GENERATION_ERROR", "deinitializeError: ${e.message}")
+         }
     }
 
     // Helper: split text into manageable chunks similar to iOS logic

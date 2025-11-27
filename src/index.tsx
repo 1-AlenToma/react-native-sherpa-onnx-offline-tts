@@ -9,12 +9,22 @@ type MGS = "PlaybackFinished" | "overwritten" | "Stopped" | "Error";
 
 let onDone: ((msg?: MGS) => void) = () => { };
 
-const initialize = (modelId: string, debug: boolean = false, threadsUsed: number = 1) => {
-  TTSManager.initializeTTS(22050, 1, modelId, debug, threadsUsed);
+const initialize = async (modelId: string, debug: boolean = false, threadsUsed: number = 1) => {
+  try {
+    return await TTSManager.initializeTTS(22050, 1, modelId, debug, threadsUsed) as boolean;
+  } catch (e) {
+    console.error(e);
+    return false;
+  }
 };
 
 const stop = async () => {
-  await TTSManager.stop();
+  try {
+    return await TTSManager.stop() as boolean;
+  } catch (e) {
+    console.error(e);
+    return false;
+  }
 }
 
 const generateAndPlay = async (item: { text: string, nextText?: string, sid?: number, speed?: number, onDone?: typeof onDone }) => {
@@ -33,8 +43,13 @@ const generateAndPlay = async (item: { text: string, nextText?: string, sid?: nu
   }
 };
 
-const deinitialize = () => {
-  TTSManager.deinitialize();
+const deinitialize = async () => {
+  try {
+    return await TTSManager.deinitialize() as boolean;
+  } catch (e) {
+    console.error(e);
+    return false;
+  }
 };
 
 
