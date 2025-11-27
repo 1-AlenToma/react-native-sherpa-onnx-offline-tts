@@ -103,6 +103,9 @@ class TTSManagerModule(private val reactContext: ReactApplicationContext) : Reac
     @ReactMethod
     fun initializeTTS(sampleRate: Double, channels: Int, modelId: String, debug: Boolean, threadsUsed: Int, promise: Promise) {
         try{
+               synchronized(this) {
+                        this.nextSentenceText = null;
+                    }
         // Setup Audio Player
         realTimeAudioPlayer = AudioPlayer(sampleRate.toInt(), channels, object : AudioPlayerDelegate {
             override fun didFinishPlaying(msg: String) {
