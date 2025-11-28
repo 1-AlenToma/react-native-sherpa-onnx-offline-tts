@@ -101,7 +101,7 @@ dependencies {
   //noinspection GradleDynamicVersion
   implementation "com.facebook.react:react-native:0.75.3"
   implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
-  implementation files('libs/sherpa-onnx-1.10.35.aar')
+  implementation files('libs/sherpa-onnx-1.10.41.aar')
   // compileOnly files('libs/sherpa-onnx-1.10.35.aar')
   // implementation "com.k2fsa:sherpa-onnx:+"
   // implementation(name:'sherpa-onnx-1.10.35.aar', ext:'aar')
