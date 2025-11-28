@@ -20,7 +20,7 @@ class AudioPlayer(
     @Volatile private var sentCompletion = false
     @Volatile private var inputCompleted = false
     @Volatile private var totalFramesWritten = 0
-
+    private var sendFinish = false
     private var playbackThread: Thread? = null
 
     private val chunkDurationMs = 200L
@@ -41,22 +41,19 @@ class AudioPlayer(
         }
     }
 
-    private fun startCompletionChecker() {
-    val checker = object : Runnable {
+    private val startCompletionChecker = object : Runnable {
         override fun run() {
             if (!isRunning) return
-
-            checkCompletion()  // check if finished
+            if (inputCompleted && !sendFinish){
+                checkCompletion()  // check if finished
+            }
 
             // If still waiting for input completion, schedule next check
-            if (inputCompleted) {
-                mainHandler.postDelayed(this, 100) // repeat after 10ms
+            if (isRunning) {
+                mainHandler.postDelayed(this, volumeUpdateIntervalMs) 
             }
         }
-    }
-
-    mainHandler.post(checker) // start the loop
-}
+        }
 
     fun start() {
         val channelConfig = if (channels == 1)
@@ -86,6 +83,7 @@ class AudioPlayer(
         audioTrack?.play()
         isRunning = true
         mainHandler.post(volumeUpdateRunnable)
+        mainHandler.post(startCompletionChecker)
 
         playbackThread = Thread {
             Log.d("AudioPlayer", "Playback thread started.")
@@ -125,8 +123,6 @@ class AudioPlayer(
         synchronized(this) {
             inputCompleted = true
         }
-        checkCompletion()
-        startCompletionChecker();
     }
 
     private fun computePeak(data: FloatArray): Float {
@@ -137,9 +133,10 @@ class AudioPlayer(
 
     private fun checkCompletion() {
         synchronized(this) {
-            if (!sentCompletion && inputCompleted && audioQueue.isEmpty() && audioTrack?.playbackHeadPosition ?: 0 >= totalFramesWritten) {
+            if (!sentCompletion && inputCompleted && audioQueue.isEmpty() && audioTrack?.playbackHeadPosition ?: 0 >0 && audioTrack?.playbackHeadPosition ?: 0 >= totalFramesWritten) {
                 sentCompletion = true
                 inputCompleted = false
+                sendFinish = true
                 mainHandler.post { delegate?.didFinishPlaying("PlaybackFinished") }
             }
         }
@@ -147,6 +144,7 @@ class AudioPlayer(
 
     fun clearQueue() {
         audioQueue.clear()
+        sendFinish = false
         synchronized(this) {
             accumulationBuffer.clear()
             volumesQueue.clear()
@@ -161,10 +159,11 @@ class AudioPlayer(
     }
 
     fun stopPlayer() {
-        
         playbackThread?.interrupt()
+        sendFinish = false
         playbackThread?.join()
         mainHandler.removeCallbacks(volumeUpdateRunnable)
+        mainHandler.removeCallbacks(startCompletionChecker)
         audioTrack?.stop()
         audioTrack?.release()
         audioTrack = null
